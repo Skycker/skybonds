@@ -190,11 +190,11 @@ if __name__ == '__main__':
     best_bond_set = None
     for combination_size in range(1, len(available_lots) + 1):
         for combination in combinations(available_lots, combination_size):
-            lot_set = BondLotSet(lots=combination)
-            if lot_set.cost > balance:
+            bond_set = BondLotSet(lots=combination)
+            if bond_set.cost > balance:
                 continue
-            if not best_bond_set or best_bond_set.profit < lot_set.profit:
-                best_bond_set = lot_set
+            if not best_bond_set or best_bond_set.profit < bond_set.profit:
+                best_bond_set = bond_set
 
     output_file_path = sys.argv[2]
     with open(output_file_path, 'w') as output_file:

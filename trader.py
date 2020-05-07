@@ -65,9 +65,9 @@
         Как и в предудущей задаче будут сложно оцениваемые накладные расходы на работу с файлами и определение
         всевозможных сочетаний покупаемых облигаций. Так же потребуется память на хранение констант, списков и тд.
     2. Ограничение на размер входных параметров - входной файл формата txt 20 строк
-       Скрипт отрабатывает за ~10 секунд при 10 облигациях во входном файле (что-то явно стоит подкрутить).
+       Скрипт отрабатывает за ~10 секунд при 20 облигациях во входном файле.
        Конфигурация машины: 2,8 GHz 4‑ядерный процессор Intel Core i7, досточное кол-во памяти, SSD диски
-    3. Субъективная оценка сложности - 6, затраченное время - 7 часов (с оформлением и доп. заданиями)
+    3. Субъективная оценка сложности - 6, затраченное время - 8 часов (с оформлением и доп. заданиями)
 """
 from itertools import combinations
 from decimal import Decimal
@@ -76,18 +76,21 @@ from decimal import Decimal
 class BondLot:
     _cost_per_one = None
     _cost = None
+    _income = None
+    _profit = None
 
-    def __init__(self, buy_day_number, name, percent_cost, quantity, nominal, coupon_per_day):
+    def __init__(self, buy_day_number, name, percent_cost, quantity, nominal, coupon_per_day, pay_day_number):
         self.buy_day_number = int(buy_day_number)
         self.name = name
         self.percent_cost = Decimal(percent_cost)
         self.quantity = int(quantity)
         self.nominal = Decimal(nominal)
         self.coupon_per_day = Decimal(coupon_per_day)
+        self.pay_day_number = int(pay_day_number)
 
     @property
     def cost_per_one(self):
-        """ Стоимость одной облигации. """
+        """ Стоимость покупки одной облигации. """
         if not self._cost_per_one:
             self._cost_per_one = self.nominal * self.percent_cost / 100
         return self._cost_per_one
@@ -99,16 +102,23 @@ class BondLot:
             self._cost = self.quantity * self.cost_per_one
         return self._cost
 
-    def get_income(self, day_number):
+    @property
+    def income(self):
         """
-        Доход от лота на определенный день (больший либо равный дню погашения облигации).
+        Доход от лота на день погашения облигации.
         Купон на день покупки не выплачивается.
         """
-        return self.quantity * (self.nominal + self.coupon_per_day * (day_number - self.buy_day_number))
+        if not self._income:
+            income_per_one = self.nominal + self.coupon_per_day * (self.pay_day_number - self.buy_day_number)
+            self._income = self.quantity * income_per_one
+        return self._income
 
-    def get_profit(self, day_number):
-        """ Прибыль с лота на определенный день. """
-        return self.get_income(day_number) - self.cost
+    @property
+    def profit(self):
+        """ Прибыль с лота на день погашения облигации. """
+        if not self._profit:
+            self._profit = self.income - self.cost
+        return self._profit
 
     def __str__(self):
         return "{0} {1} {2} {3}".format(self.buy_day_number, self.name, self.percent_cost, self.quantity)
@@ -116,6 +126,7 @@ class BondLot:
 
 class BondLotSet:
     _cost = None
+    _profit = None
 
     def __init__(self, lots):
         self.lots = lots
@@ -123,14 +134,18 @@ class BondLotSet:
     @property
     def cost(self):
         if not self._cost:
-            self._cost = sum([lot.cost for lot in self.lots])
+            self._cost = 0
+            for lot in self.lots:
+                self._cost += lot.cost
         return self._cost
 
-    def get_income(self, day_number):
-        return sum([lot.get_income(day_number) for lot in self.lots])
-
-    def get_profit(self, day_number):
-        return sum([lot.get_profit(day_number) for lot in self.lots])
+    @property
+    def profit(self):
+        if not self._profit:
+            self._profit = 0
+            for lot in self.lots:
+                self._profit += lot.profit
+        return self._profit
 
     def __iter__(self):
         return iter(self.lots)
@@ -139,9 +154,10 @@ class BondLotSet:
 if __name__ == '__main__':
     import sys
 
-    trade_days = 0
-    max_lots_number = 0
-    balance = 0
+    trade_days = None
+    max_lots_number = None
+    balance = None
+    pay_day_number = None
     ownership_days = 30
     bond_nominal = 1000
     coupon = 1
@@ -155,6 +171,7 @@ if __name__ == '__main__':
                 trade_days = int(row_data[0])
                 max_lots_number = int(row_data[1])
                 balance = Decimal(row_data[2])
+                pay_day_number = trade_days + ownership_days
             else:
                 available_lots.append(
                     BondLot(
@@ -163,29 +180,24 @@ if __name__ == '__main__':
                         percent_cost=row_data[2],
                         quantity=row_data[3],
                         nominal=bond_nominal,
-                        coupon_per_day=coupon
+                        coupon_per_day=coupon,
+                        pay_day_number=pay_day_number
                     )
                 )
 
     best_bond_set = None
-    commit_day_number = trade_days + ownership_days
     for combination_size in range(1, len(available_lots) + 1):
         for combination in combinations(available_lots, combination_size):
             lot_set = BondLotSet(lots=combination)
             if lot_set.cost > balance:
                 continue
-            if (
-                    not best_bond_set or
-                    best_bond_set.get_profit(
-                        day_number=commit_day_number) < lot_set.get_profit(day_number=commit_day_number)
-            ):
+            if not best_bond_set or best_bond_set.profit < lot_set.profit:
                 best_bond_set = lot_set
 
     output_file_path = sys.argv[2]
     with open(output_file_path, 'w') as output_file:
         if best_bond_set:
-            best_profit = best_bond_set.get_profit(day_number=commit_day_number)
-            output_file.write(str(best_profit) + '\n')
+            output_file.write(str(best_bond_set.profit) + '\n')
             for lot in best_bond_set:
                 output_file.write(str(lot) + '\n')
         else:
